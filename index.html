@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Server Portal</title>
+<style>
+  body {margin:0;font-family:Poppins,sans-serif;background:#000;color:#eee;}
+  #app{max-width:1100px;margin:60px auto;background:#0a0a0a;border-radius:16px;
+    box-shadow:0 0 25px rgba(0,150,255,0.3);padding:30px;animation:fadeIn .8s ease-out;}
+  .login-box{background:#0d0d0d;border:1px solid #00aaff33;border-radius:14px;
+    padding:50px;width:420px;margin:120px auto;text-align:center;animation:popIn .6s ease;}
+  .login-box h2{color:#00aaff;text-shadow:0 0 14px #00aaff;margin-bottom:20px;}
+  input,textarea,select{width:100%;padding:14px;margin:10px 0;border:none;border-radius:10px;
+    background:#161616;color:#fff;font-size:15px;}
+  button{background:#00aaff;color:#fff;border:none;border-radius:10px;padding:12px 20px;
+    cursor:pointer;font-size:15px;font-weight:600;margin-top:10px;transition:all .3s ease;}
+  button:hover{background:#0094dd;box-shadow:0 0 15px #00aaff;transform:scale(1.05);}
+  .sidebar{float:left;width:230px;border-right:1px solid #00aaff33;min-height:400px;padding-right:15px;}
+  .sidebar button{width:100%;margin-bottom:10px;}
+  .main{margin-left:260px;padding-top:10px;}
+  .item{border-bottom:1px solid #00aaff22;padding:10px 0;}
+  .notify{position:fixed;top:25px;right:-350px;background:#111;border-left:5px solid #00aaff;color:#fff;
+    padding:15px 20px;border-radius:8px;transition:right .5s ease,opacity .5s ease;opacity:0;z-index:9999;}
+  .notify.show{right:25px;opacity:1;}
+  .modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.9);background:#111;color:white;
+    padding:25px;border-radius:12px;max-width:600px;width:90%;display:none;z-index:999;transition:all .3s ease;
+    box-shadow:0 0 20px rgba(0,150,255,0.3);}
+  .modal.show{display:block;transform:translate(-50%,-50%) scale(1);}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes popIn{from{transform:scale(.8);opacity:0;}to{transform:scale(1);opacity:1;}}
+</style>
+</head>
+<body>
+<div id="app"><div id="view"></div></div>
+<div id="notify" class="notify"></div>
+<div id="modal" class="modal"></div>
+
+<script>
+let users = JSON.parse(localStorage.getItem('users')||'{}');
+let servers = JSON.parse(localStorage.getItem('servers')||'[]');
+
+if(!users["Admin"]){
+  users["Admin"]={password:"11",role:"Admin",disabled:false};
+  localStorage.setItem("users",JSON.stringify(users));
+}
+
+function notify(msg,color="#00aaff"){
+  const n=document.getElementById("notify");
+  n.innerText=msg;n.style.borderLeftColor=color;
+  n.classList.add("show");
+  setTimeout(()=>n.classList.remove("show"),3000);
+}
+
+showLogin();
+
+function showLogin(){
+  document.getElementById("view").innerHTML=`
+    <div class="login-box">
+      <h2>Sign In</h2>
+      <input id="username" placeholder="Username">
+      <input id="password" type="password" placeholder="Password">
+      <button onclick="login()">Login</button>
+    </div>`;
+}
+
+function login(){
+  const u=document.getElementById("username").value.trim();
+  const p=document.getElementById("password").value.trim();
+  const user=users[u];
+  if(!user)return notify("User not found","#ff4444");
+  if(user.password!==p)return notify("Wrong password","#ff4444");
+  if(user.disabled)return notify("Your account is disabled.","#ff4444");
+  localStorage.setItem("currentUser",u);
+  notify("Welcome, "+u+"!");
+  if(user.role==="Admin")showAdminPanel(u);
+  else showUserDashboard(u);
+}
+
+function logout(){
+  localStorage.removeItem("currentUser");
+  notify("Logged out!");
+  setTimeout(showLogin,500);
+}
+
+/* ---------------- ADMIN PANEL ---------------- */
+function showAdminPanel(currentUser){
+  document.getElementById("view").innerHTML=`
+    <div class="content-area">
+      <div class="sidebar">
+        <button onclick="adminSection('users','${currentUser}')">👥 Global Users</button>
+        <button onclick="adminSection('create','${currentUser}')">➕ Create User</button>
+        <button onclick="logout()">🚪 Logout</button>
+      </div>
+      <div class="main" id="admin-main"></div>
+    </div>`;
+  adminSection('users',currentUser);
+}
+
+function adminSection(type,currentUser){
+  const main=document.getElementById("admin-main");
+  if(type==="users"){
+    let html="<h2>Global Users</h2>";
+    for(const u in users){
+      html+=`
+        <div class="item">
+          <b>${u}</b> (${users[u].role})
+          <button onclick="toggleUser('${u}','${currentUser}')">${users[u].disabled?"Enable":"Disable"}</button>
+          <button style="background:#880000" onclick="deleteUser('${u}','${currentUser}')">🗑 Delete</button>
+        </div>`;
+    }
+    main.innerHTML=html;
+  } else {
+    main.innerHTML=`
+      <h2>Create User</h2>
+      <input id="newUser" placeholder="Username">
+      <input id="newPass" placeholder="Password">
+      <select id="newRole"><option>User</option><option>Admin</option></select>
+      <button onclick="createUser('${currentUser}')">Create</button>`;
+  }
+}
+
+function toggleUser(u,c){
+  users[u].disabled=!users[u].disabled;
+  localStorage.setItem("users",JSON.stringify(users));
+  notify(`${u} is now ${users[u].disabled?"Disabled":"Enabled"}`);
+  adminSection('users',c);
+}
+
+function deleteUser(u,c){
+  delete users[u];
+  localStorage.setItem("users",JSON.stringify(users));
+  notify(`${u} deleted`,"#ff4444");
+  adminSection('users',c);
+}
+
+function createUser(c){
+  const u=document.getElementById("newUser").value.trim(),
+        p=document.getElementById("newPass").value.trim(),
+        r=document.getElementById("newRole").value;
+  if(!u||!p)return notify("Fill all fields","#ff4444");
+  users[u]={password:p,role:r,disabled:false};
+  localStorage.setItem("users",JSON.stringify(users));
+  notify(`${r} ${u} created`);
+  adminSection('users',c);
+}
+
+/* ---------------- USER DASHBOARD ---------------- */
+function showUserDashboard(username){
+  document.getElementById("view").innerHTML=`
+    <div class="content-area">
+      <div class="sidebar">
+        <button onclick="userSection('create','${username}')">➕ Create Server</button>
+        <button onclick="userSection('my','${username}')">🧩 My Servers</button>
+        <button onclick="userSection('global','${username}')">🌐 Global Servers</button>
+        <button onclick="logout()">🚪 Logout</button>
+      </div>
+      <div class="main" id="user-main"></div>
+    </div>`;
+  userSection('create',username);
+}
+
+function userSection(type,username){
+  const main=document.getElementById("user-main");
+  if(type==="create"){
+    main.innerHTML=`
+      <h2>Create Server</h2>
+      <div id="serverForm">
+        <input id="srvName" placeholder="Server Name">
+        <textarea id="srvDesc" placeholder="Description"></textarea>
+        <select id="srvPriv">
+          <option value="public">Public</option>
+          <option value="private">Private</option>
+        </select>
+        <button id="publishBtn">Publish</button>
+      </div>`;
+    document.getElementById("publishBtn").addEventListener("click",(e)=>{
+      e.preventDefault();
+      createServer(username);
+    });
+  } else if(type==="global"){
+    main.innerHTML=`
+      <h2>Global Servers 🌐</h2>
+      <input id="search" placeholder="Search servers..." oninput="searchServers(this.value)">
+      <div id="serverList"></div>`;
+    renderServerList("",username);
+  } else if(type==="my"){
+    renderMyServers(username);
+  }
+}
+
+function createServer(owner){
+  const name=document.getElementById("srvName").value.trim();
+  const desc=document.getElementById("srvDesc").value.trim();
+  const priv=document.getElementById("srvPriv").value;
+  if(!name||!desc)return notify("Please fill in all fields","#ff4444");
+
+  const newServer={id:Date.now(),name,desc,owner,private:(priv==="private")};
+  servers.push(newServer);
+  localStorage.setItem("servers",JSON.stringify(servers));
+  console.log("Saved servers:",servers);
+  notify("Server created!");
+  setTimeout(()=>userSection('my',owner),400);
+}
+
+function renderServerList(search="",username=""){
+  const list=document.getElementById("serverList");
+  if(!list)return;
+  let html="";
+  servers
+    .filter(s=>!s.private && s.name.toLowerCase().includes(search.toLowerCase()))
+    .forEach(s=>{
+      html+=`
+        <div class="item">
+          <b>${s.name}</b> by ${s.owner}<br>
+          <small>${s.desc}</small><br>
+          <button onclick="viewServer(${s.id})">View</button>
+        </div>`;
+    });
+  list.innerHTML=html||"<p>No servers found.</p>";
+}
+
+function renderMyServers(username){
+  const main=document.getElementById("user-main");
+  let my=servers.filter(s=>s.owner===username);
+  let html="<h2>My Servers</h2>";
+  if(my.length===0){main.innerHTML="<p>You haven't created any servers yet.</p>";return;}
+  my.forEach(s=>{
+    html+=`
+      <div class="item">
+        <b>${s.name}</b> (${s.private?"Private":"Public"})<br>
+        <small>${s.desc}</small><br>
+        <button onclick="viewServer(${s.id})">View</button>
+        <button style="background:#880000" onclick="deleteServer(${s.id},'${username}')">Delete</button>
+      </div>`;
+  });
+  main.innerHTML=html;
+}
+
+function deleteServer(id,username){
+  servers=servers.filter(s=>s.id!==id);
+  localStorage.setItem("servers",JSON.stringify(servers));
+  notify("Server deleted","#ff4444");
+  renderMyServers(username);
+}
+
+function searchServers(v){renderServerList(v);}
+
+function viewServer(id){
+  const s=servers.find(x=>x.id===id);
+  const modal=document.getElementById("modal");
+  modal.innerHTML=`
+    <h2>${s.name}</h2>
+    <p><b>Owner:</b> ${s.owner}</p>
+    <p>${s.desc}</p>
+    <p><b>Visibility:</b> ${s.private?"Private":"Public"}</p>
+    <br><button onclick="closeModal()">Close</button>`;
+  modal.classList.add("show");
+}
+function closeModal(){document.getElementById("modal").classList.remove("show");}
+</script>
+</body>
+</html>
